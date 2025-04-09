@@ -5,6 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter.ttk import Progressbar
+import subprocess
 
 import librosa
 import librosa.display
@@ -24,6 +25,19 @@ class AudioAnalyzerApp:
         self.bg_color = "#2C2E3B"
         self.accent_color = "#FF5D8F"
         self.secondary_bg = "#3D3F4F"
+
+        # Parameter für die Notenerkennung
+        self.min_note_length = 0.25  # Minimale Notendauer in Sekunden
+        self.min_magnitude = 1.0  # Minimale Lautstärke für eine gültige Note
+        self.min_pitch = 36  # Minimale Tonhöhe (C2)
+        self.max_pitch = 96  # Maximale Tonhöhe (C7)
+
+        # StringVar-Variablen für die Eingabefelder
+        self.note_length_var = tk.StringVar(root)
+        self.note_length_var.set(str(self.min_note_length))
+
+        self.magnitude_var = tk.StringVar(root)
+        self.magnitude_var.set(str(self.min_magnitude))
 
         # Erstelle UI
         self.setup_ui()
@@ -49,6 +63,26 @@ class AudioAnalyzerApp:
         # Hauptbereich
         main_frame = tk.Frame(self.root, bg=self.bg_color, padx=20, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Einstellungen Frame
+        settings_frame = tk.Frame(main_frame, bg=self.bg_color)
+        settings_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Minimale Notenlänge
+        note_length_label = tk.Label(settings_frame, text="Min. Notenlänge (s):",
+                                     fg=self.text_color, bg=self.bg_color)
+        note_length_label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
+
+        note_length_entry = tk.Entry(settings_frame, textvariable=self.note_length_var, width=5)
+        note_length_entry.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+
+        # Minimale Lautstärke
+        magnitude_label = tk.Label(settings_frame, text="Min. Lautstärke:",
+                                   fg=self.text_color, bg=self.bg_color)
+        magnitude_label.grid(row=1, column=0, sticky="w", padx=5, pady=2)
+
+        magnitude_entry = tk.Entry(settings_frame, textvariable=self.magnitude_var, width=5)
+        magnitude_entry.grid(row=1, column=1, sticky="w", padx=5, pady=2)
 
         # Drag & Drop-Bereich
         self.drop_frame = tk.Frame(main_frame, bg=self.secondary_bg, padx=20, pady=30)
@@ -122,6 +156,14 @@ class AudioAnalyzerApp:
             messagebox.showerror("Fehler", "Bitte wähle eine unterstützte Audio-Datei aus (.wav, .mp3, .ogg, .flac)")
             return
 
+        # Aktualisiere Parameter aus der GUI
+        try:
+            self.min_note_length = float(self.note_length_var.get())
+            self.min_magnitude = float(self.magnitude_var.get())
+        except ValueError:
+            messagebox.showerror("Fehler", "Ungültige Eingabe bei den Parametern. Bitte gib gültige Zahlen ein.")
+            return
+
         self.current_file = file_path
 
         # UI-Update für den Analyseprozess
@@ -162,7 +204,16 @@ class AudioAnalyzerApp:
                 json.dump(formatted_notes, f, indent=2)
 
             self.update_status(f"Fertig! Ergebnis gespeichert unter: {output_file}")
-            messagebox.showinfo("Erfolg", f"Noten wurden extrahiert und in {output_file} gespeichert.")
+
+            # Frage, ob der Player gestartet werden soll
+            def ask_to_start_player():
+                if messagebox.askyesno("Erfolg",
+                                       f"Noten wurden extrahiert und in {output_file} gespeichert. Möchtest du den Noten-Player starten?"):
+                    self.start_player(output_file)
+                else:
+                    messagebox.showinfo("Erfolg", f"Noten wurden erfolgreich in {output_file} gespeichert.")
+
+            self.root.after(0, ask_to_start_player)
 
             # Zurück zum Anfangsbildschirm
             self.root.after(1000, self.reset_ui)
@@ -175,10 +226,7 @@ class AudioAnalyzerApp:
         self.is_analyzing = False
 
     def extract_notes(self, pitches, magnitudes, sr):
-        # Parameter für die Notenerkennung
-        min_note_length = 0.25  # Minimale Notendauer in Sekunden
-        min_magnitude = 1.0  # Minimale Lautstärke für eine gültige Note
-
+        # Hier werden die Noten aus den extrahierten Tonhöhen und Lautstärken ermittelt
         notes = []
         current_note = None
         current_start = 0
@@ -186,52 +234,82 @@ class AudioAnalyzerApp:
         # Wandle die Pitches-Matrix in dominante Tonhöhen pro Frame um
         times = librosa.times_like(pitches)
 
+        # Verwende ein Fenster für Notenerkennung, um Rauschen zu reduzieren
+        window_size = 3  # Fenster von Frames für stabilere Notenerkennung
+
+        # Initialisiere das Fenster
+        pitch_window = []
+        mag_window = []
+
         for t, time in enumerate(times):
             # Finde die dominante Frequenz in diesem Frame
             index = magnitudes[:, t].argmax()
             freq = pitches[index, t]
             mag = magnitudes[index, t]
 
+            # Aktualisiere das Fenster
+            pitch_window.append(freq)
+            mag_window.append(mag)
+
+            # Behalte nur die letzten window_size Frames
+            if len(pitch_window) > window_size:
+                pitch_window.pop(0)
+                mag_window.pop(0)
+
+            # Warte, bis das Fenster gefüllt ist
+            if len(pitch_window) < window_size:
+                continue
+
+            # Berechne die mittlere Frequenz und Magnitude im Fenster
+            avg_freq = np.median(pitch_window)  # Median ist robuster gegen Ausreißer
+            avg_mag = np.median(mag_window)
+
             # Ignoriere Stille oder Geräusche mit niedriger Magnitude
-            if freq <= 0 or mag < min_magnitude:
+            if avg_freq <= 0 or avg_mag < self.min_magnitude:
                 if current_note is not None:
                     # Wenn wir bereits eine Note verfolgen, füge sie hinzu
-                    if time - current_start >= min_note_length:
+                    if time - current_start >= self.min_note_length:
                         midi_note = librosa.hz_to_midi(current_note)
-                        notes.append({
-                            'time': current_start,
-                            'pitch': int(round(midi_note)),
-                            'duration': time - current_start
-                        })
+                        # Nur Noten im gewünschten Bereich berücksichtigen
+                        if self.min_pitch <= midi_note <= self.max_pitch:
+                            notes.append({
+                                'time': current_start,
+                                'pitch': int(round(midi_note)),
+                                'duration': time - current_start
+                            })
                     current_note = None
             else:
                 # Konvertiere Frequenz in MIDI-Notennummern
-                midi_note = librosa.hz_to_midi(freq)
+                midi_note = librosa.hz_to_midi(avg_freq)
 
                 if current_note is None:
                     # Starte eine neue Note
-                    current_note = freq
+                    current_note = avg_freq
                     current_start = time
-                elif abs(librosa.hz_to_midi(current_note) - midi_note) > 1:
+                elif abs(librosa.hz_to_midi(current_note) - midi_note) > 0.5:  # Verringerte Toleranz für Tonwechsel
                     # Wenn sich die Note signifikant geändert hat, beende die vorherige
-                    if time - current_start >= min_note_length:
+                    if time - current_start >= self.min_note_length:
                         midi_note_prev = librosa.hz_to_midi(current_note)
-                        notes.append({
-                            'time': current_start,
-                            'pitch': int(round(midi_note_prev)),
-                            'duration': time - current_start
-                        })
-                    current_note = freq
+                        # Nur Noten im gewünschten Bereich berücksichtigen
+                        if self.min_pitch <= midi_note_prev <= self.max_pitch:
+                            notes.append({
+                                'time': current_start,
+                                'pitch': int(round(midi_note_prev)),
+                                'duration': time - current_start
+                            })
+                    current_note = avg_freq
                     current_start = time
 
         # Füge die letzte Note hinzu, falls vorhanden
-        if current_note is not None:
+        if current_note is not None and times[-1] - current_start >= self.min_note_length:
             midi_note = librosa.hz_to_midi(current_note)
-            notes.append({
-                'time': current_start,
-                'pitch': int(round(midi_note)),
-                'duration': times[-1] - current_start
-            })
+            # Nur Noten im gewünschten Bereich berücksichtigen
+            if self.min_pitch <= midi_note <= self.max_pitch:
+                notes.append({
+                    'time': current_start,
+                    'pitch': int(round(midi_note)),
+                    'duration': times[-1] - current_start
+                })
 
         return notes
 
@@ -248,7 +326,13 @@ class AudioAnalyzerApp:
         # Sortiere nach Startzeit
         formatted_notes.sort(key=lambda x: x['time'])
 
-        return {'notes': formatted_notes}
+        # Entferne Duplikate (Noten mit gleicher Startzeit und Tonhöhe)
+        unique_notes = []
+        for note in formatted_notes:
+            if not any(n['time'] == note['time'] and n['pitch'] == note['pitch'] for n in unique_notes):
+                unique_notes.append(note)
+
+        return {'notes': unique_notes}
 
     def update_status(self, text):
         self.root.after(0, lambda: self.status_label.config(text=text))
@@ -257,6 +341,21 @@ class AudioAnalyzerApp:
         self.progress_bar.stop()
         self.progress_frame.pack_forget()
         self.drop_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    def start_player(self, notes_file):
+        """Startet den Noten-Player mit der erstellten JSON-Datei"""
+        try:
+            # Prüfe, ob spitter_gui.py existiert
+            if os.path.exists("spitter_gui.py"):
+                subprocess.Popen([sys.executable, "spitter_gui.py", notes_file])
+            # Alternativ prüfe auf spitter.py
+            elif os.path.exists("spitter.py"):
+                subprocess.Popen([sys.executable, "spitter.py", notes_file])
+            else:
+                messagebox.showinfo("Information",
+                                    f"Noten-Player nicht gefunden. Die Notendatei wurde unter '{notes_file}' gespeichert.")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Starten des Players: {str(e)}")
 
 
 def enable_dnd(root):

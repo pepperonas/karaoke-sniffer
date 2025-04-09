@@ -23,7 +23,7 @@ pip install -r requirements.txt
 1. Starte das Programm:
 
 ```bash
-python audio_to_notes.py
+python sniffer.py
 ```
 
 2. Ziehe eine Audio-Datei in das Fenster oder klicke auf "Datei auswählen"
@@ -76,7 +76,7 @@ Bei Problemen mit Audiocodecs könnte die Installation von weiteren Systembiblio
 
 ---
 
-# Noten-Player (spitter.py & spitter-alt.py)
+# Noten-Player (spitter_gui.py, spitter.py & spitter-alt.py)
 
 Diese Python-Anwendung liest eine JSON-Datei mit musikalischen Noten und gibt sie akustisch wieder.
 
@@ -84,15 +84,17 @@ Diese Python-Anwendung liest eine JSON-Datei mit musikalischen Noten und gibt si
 
 - Liest JSON-Dateien im Format `{notes: [{time, pitch, duration}, ...]}`
 - Wandelt MIDI-Noten in hörbare Frequenzen um
-- Zeigt eine visuelle Repräsentation der Noten an
+- Drag & Drop-Unterstützung für JSON-Dateien
+- Zwei Player-Modi: Visuell (mit Piano-Roll) oder Einfach
 - Zeigt Fortschritt und aktuell gespielte Noten an
-- Piano-Roll-Visualisierung der umliegenden Noten
 
 ## Voraussetzungen
 
 - Python 3.x
 - pygame
 - numpy
+- simpleaudio
+- tkinterdnd2
 
 ## Installation
 
@@ -104,7 +106,18 @@ pip install -r requirements.txt
 
 ## Verwendung
 
-Starte die Anwendung mit der JSON-Datei als Parameter:
+### Mit der grafischen Benutzeroberfläche:
+
+```
+python spitter_gui.py
+```
+
+In der GUI kannst du:
+- Eine JSON-Datei per Drag & Drop oder über den Dateiauswahldialog öffnen
+- Zwischen dem visuellen Player (spitter) und dem einfachen Player (spitter-alt) wählen
+- Die Wiedergabe starten
+
+### Direkte Verwendung der Player:
 
 ```
 python spitter.py notes.json
