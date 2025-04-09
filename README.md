@@ -1,4 +1,4 @@
-# Audio zu Noten Konverter
+# Audio zu Noten Konverter (sniffer.py)
 
 Dieses Tool analysiert Audio-Dateien und extrahiert die enthaltenen Noten im JSON-Format für dein Karaoke-Projekt.
 
@@ -73,3 +73,78 @@ Bei Problemen mit Audiocodecs könnte die Installation von weiteren Systembiblio
 
 - Python 3.7+
 - Mindestens 4 GB RAM (für die Analyse längerer Audio-Dateien)
+
+---
+
+# Noten-Player (spitter.py & spitter-alt.py)
+
+Diese Python-Anwendung liest eine JSON-Datei mit musikalischen Noten und gibt sie akustisch wieder.
+
+## Funktionen
+
+- Liest JSON-Dateien im Format `{notes: [{time, pitch, duration}, ...]}`
+- Wandelt MIDI-Noten in hörbare Frequenzen um
+- Zeigt eine visuelle Repräsentation der Noten an
+- Zeigt Fortschritt und aktuell gespielte Noten an
+- Piano-Roll-Visualisierung der umliegenden Noten
+
+## Voraussetzungen
+
+- Python 3.x
+- pygame
+- numpy
+
+## Installation
+
+1. Installiere die erforderlichen Pakete:
+
+```
+pip install -r requirements.txt
+```
+
+## Verwendung
+
+Starte die Anwendung mit der JSON-Datei als Parameter:
+
+```
+python spitter.py notes.json
+```
+
+oder
+
+```
+python spitter-alt.py notes.json
+```
+
+Wenn kein Parameter angegeben wird, wird standardmäßig `paste.txt` im aktuellen Verzeichnis verwendet.
+
+## Steuerung
+
+- ESC-Taste: Beendet die Anwendung
+- Das Fenster schließen: Beendet die Anwendung
+
+## Format der JSON-Datei
+
+Die JSON-Datei sollte folgendes Format haben:
+
+```json
+{
+  "notes": [
+    {
+      "time": 3.0,
+      // Startzeit in Sekunden
+      "pitch": 82,
+      // MIDI-Tonhöhe (0-127)
+      "duration": 0.3
+      // Dauer in Sekunden
+    }
+    // Weitere Noten...
+  ]
+}
+```
+
+## Technische Details
+
+- Die Anwendung generiert Sinuswellen für jede Note
+- MIDI-Noten werden nach der Standard-Formel in Frequenzen umgerechnet: 440 * 2^((note-69)/12)
+- Die grafische Oberfläche zeigt den Fortschritt, kürzlich gespielte Noten und eine Piano-Roll-Ansicht
